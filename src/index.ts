@@ -1,33 +1,9 @@
 import axios, { AxiosRequestHeaders } from "axios";
-import fingerprint from "@fingerprintjs/fingerprintjs";
 import { get } from "lodash";
-import { parseJson} from "./utils";
+import { getFingerprint, getToken, mergeHeaders, parseJson} from "./utils";
 import Logger from './logger';
-import {localStorageGetItem, localStorageSetItem, sessionStorageGetItem, sessionStorageSetItem} from "./storage";
+import {localStorageGetItem, localStorageSetItem, sessionStorageSetItem} from "./storage";
 
-async function getFingerprint() {
-	try {
-		const v = await fingerprint
-			.load();
-		const v_1 = await v.get();
-		localStorageSetItem("fingerprintId", v_1.visitorId);
-		return v_1.visitorId;
-	} catch {
-		return "";
-	}
-}
-
-function mergeHeaders(headers: Partial<AxiosRequestHeaders>): AxiosRequestHeaders {
-	const accessToken = getToken("access-token");
-	const refreshToken = getToken("refresh-token");
-	if (accessToken) {
-		headers.Authorization = `Bearer ${accessToken}`;
-	}
-	if (refreshToken) {
-		headers["Refresh-Token"] = refreshToken;
-	}
-	return headers as AxiosRequestHeaders;
-}
 
 export interface IHttpOptions {
     refresh: string;
@@ -37,12 +13,6 @@ export interface IHttpOptions {
 	app: string;
 	version: string;
 	sign: string;
-}
-
-function getToken(key: string) {
-	const local = localStorageGetItem(key, '');
-	if (local) return local;
-	return sessionStorageGetItem(key, '');
 }
 
 export function clearToken() {
