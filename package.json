@@ -1,11 +1,11 @@
 {
   "name": "@soratani-code/web-http",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "",
   "scripts": {
     "build": "rm -rf lib && tsc -p tsconfig.json && tsc-alias",
     "changeset": "changeset",
-    "version": "changeset version && pnpm install"
+    "version": "changeset version"
   },
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
