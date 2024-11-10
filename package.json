@@ -1,0 +1,42 @@
+{
+  "name": "@soratani-code/web-http",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "build": "rm -rf lib && tsc -p tsconfig.json && tsc-alias",
+    "changeset": "changeset",
+    "version": "changeset version && pnpm install"
+  },
+  "main": "lib/index.js",
+  "typings": "lib/index.d.ts",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "files": [
+    "lib"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/soratani/web-http.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/soratani/web-http/issues"
+  },
+  "homepage": "https://github.com/soratani/web-http#readme",
+  "devDependencies": {
+    "@changesets/cli": "^2.26.1",
+    "@types/axios": "^0.14.4",
+    "@types/lodash": "^4.17.13",
+    "tsc-alias": "^1.8.8",
+    "typescript": "^5.0.4"
+  },
+  "peerDependencies": {
+    "@fingerprintjs/fingerprintjs": "^4.5.1",
+    "axios": "^1.7.7",
+    "lodash": "^4.17.21"
+  }
+}
