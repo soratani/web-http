@@ -6,8 +6,7 @@ import {localStorageGetItem, localStorageSetItem, sessionStorageSetItem} from ".
 
 
 interface IHttpOptions {
-    refresh: string;
-    auth: string;
+	auth: IAuthUrl
 	platform: Platform;
 	app: string;
 	version: string;
@@ -16,7 +15,7 @@ interface IHttpOptions {
 
 interface IAuthUrl {
 	refresh: string;
-    auth: string;
+    login: string;
 }
 
 export enum Platform {
@@ -35,9 +34,9 @@ export function clearToken() {
 	localStorageSetItem('access-token', '');
 }
 
-export default function create(prefix: string, urls: IAuthUrl, options: IHttpOptions) {
-    const { platform, app, sign, version } = options;
-	const { refresh, auth } = urls;
+export default function create(prefix: string, options: IHttpOptions) {
+    const { platform, app, sign, version, auth } = options;
+	const { refresh, login } = auth;
 	const baseHeaders = {
 		app,
 		sign,
@@ -58,7 +57,7 @@ export default function create(prefix: string, urls: IAuthUrl, options: IHttpOpt
         return api.get(refresh)
         .then(() => api(config))
         .catch(() => {
-            window.location.href = auth;
+            window.location.href = login;
         });
     }
 
