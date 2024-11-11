@@ -1,18 +1,31 @@
 import axios, { AxiosRequestHeaders } from "axios";
-import { get } from "lodash";
-import { getFingerprint, getToken, mergeHeaders, parseJson} from "./utils";
+import { get, some } from "lodash";
+import { getFingerprint, getSystemKey, getToken, mergeHeaders, parseJson} from "./utils";
 import Logger from './logger';
 import {localStorageGetItem, localStorageSetItem, sessionStorageSetItem} from "./storage";
 
 
-export interface IHttpOptions {
+interface IHttpOptions {
     refresh: string;
     auth: string;
-	platform: number;
-	system: number;
+	platform: Platform;
 	app: string;
 	version: string;
 	sign: string;
+}
+
+interface IAuthUrl {
+	refresh: string;
+    auth: string;
+}
+
+export enum Platform {
+	desktop,
+	app,
+	web,
+	h5,
+	cli,
+	base,
 }
 
 export function clearToken() {
@@ -22,18 +35,23 @@ export function clearToken() {
 	localStorageSetItem('access-token', '');
 }
 
-export default function create(url: string, options: IHttpOptions) {
-    const { platform, system, app, sign, version, refresh, auth } = options;
+export default function create(prefix: string, urls: IAuthUrl, options: IHttpOptions) {
+    const { platform, app, sign, version } = options;
+	const { refresh, auth } = urls;
+	const baseHeaders = {
+		app,
+		sign,
+		version,
+		platform,
+	}
+	if (!some([Platform.base, Platform.cli], (i) => i === platform)) {
+		baseHeaders['system'] = getSystemKey()
+	}
+
 	const api = axios.create({
-		baseURL: url,
+		baseURL: prefix,
 		withCredentials: true,
-		headers: {
-			app,
-			sign,
-			version,
-			platform,
-			system
-		}
+		headers: baseHeaders
 	});
 
     function refreshApi(config: any,) {
