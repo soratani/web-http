@@ -1,4 +1,4 @@
-import axios, { Axios, AxiosRequestHeaders } from "axios";
+import axios, { AxiosRequestHeaders } from "axios";
 import { get, some } from "lodash";
 import { getFingerprint, getSystemKey, getToken, mergeHeaders, parseJson} from "./utils";
 import Logger from './logger';
@@ -33,7 +33,7 @@ export function clearToken() {
 	localStorageSetItem('access-token', '');
 }
 
-export default function create(prefix: string, options: IHttpOptions): Axios {
+export default function create(prefix: string, options: IHttpOptions): axios.AxiosInstance {
     const { platform, app, sign, version, auth } = options;
 	const { refresh, login } = auth;
 	const baseHeaders = {
