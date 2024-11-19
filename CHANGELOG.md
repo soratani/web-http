@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.0.4
+
+### Patch Changes
+
+- 042f401: 1.0.4
+
 ## 1.0.3
 
 ### Patch Changes
