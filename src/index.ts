@@ -1,9 +1,8 @@
-import axios, { AxiosInstance, AxiosRequestHeaders } from "axios";
+import axios, { Axios, AxiosRequestHeaders } from "axios";
 import { get, some } from "lodash";
 import { getFingerprint, getSystemKey, getToken, mergeHeaders, parseJson} from "./utils";
 import Logger from './logger';
 import {localStorageGetItem, localStorageSetItem, sessionStorageSetItem} from "./storage";
-
 
 interface IHttpOptions {
 	auth: IAuthUrl
@@ -34,7 +33,7 @@ export function clearToken() {
 	localStorageSetItem('access-token', '');
 }
 
-export default function create(prefix: string, options: IHttpOptions): AxiosInstance {
+export default function create(prefix: string, options: IHttpOptions): Axios {
     const { platform, app, sign, version, auth } = options;
 	const { refresh, login } = auth;
 	const baseHeaders = {
