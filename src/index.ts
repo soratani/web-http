@@ -88,21 +88,11 @@ export default function create(prefix: string, options: IHttpOptions): axios.Axi
 		(value) => {
 			const accessToken = get(value, "headers.access-token", "");
 			const refreshToken = get(value, "headers.refresh-token", "");
-			const authParams = parseJson(value.config.data);
-			const save = get(authParams, 'save', false);
 			if (accessToken) {
-				if (save) {
-					localStorageSetItem("access-token", accessToken);
-				} else {
-					sessionStorageSetItem("access-token", accessToken);
-				}
+				localStorageSetItem("access-token", accessToken);
 			}
 			if (refreshToken) {
-				if (save) {
-					localStorageSetItem("refresh-token", refreshToken);
-				} else {
-					sessionStorageSetItem("refresh-token", refreshToken);
-				}
+				localStorageSetItem("refresh-token", refreshToken);
 			}
 			return get(value, "data", { code: 500, message: "请稍后重试" });
 		},
