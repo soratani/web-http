@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.0.13
+
+### Patch Changes
+
+- c494c37: 1.0.13
+
 ## 1.0.12
 
 ### Patch Changes
