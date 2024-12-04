@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.0.9
+
+### Patch Changes
+
+- 96c901d: 1.0.9
+
 ## 1.0.8
 
 ### Patch Changes
