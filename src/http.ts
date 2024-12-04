@@ -125,10 +125,19 @@ export class HttpClient {
         }, Promise.reject(res))
     }
 
+    clearAuth() {
+        localStorageSetItem('refresh-token', '');
+        localStorageSetItem('access-token', '');
+    }
+
     use(plugin: HttpPlugin): HttpClient {
         const item = this.plugins.find((item) => item.constructor === plugin.constructor);
         if (item) return;
         this.plugins.push(plugin);
+    }
+
+    request<D = any>(config: axios.AxiosRequestConfig<any>): Promise<HttpData<D>> {
+        return this.instance(config)
     }
 
     get<D = any>(url: string, config?: axios.AxiosRequestConfig<any>): Promise<HttpData<D>> {
