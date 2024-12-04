@@ -119,7 +119,7 @@ export class HttpClient {
         if (refreshToken) {
             localStorageSetItem("refresh-token", refreshToken);
         }
-        Logger.info(`[${this.getTime()} HTTP SUCCESS]: ${url}`, value);
+        Logger.info(`[HTTP SUCCESS]: ${url}`, value);
         return reduce(this.plugins, (pre, plugin) => {
             return pre.then((value) => plugin.response(value, config));
         }, Promise.resolve(get(value, "data", { code: 500, message: "请稍后重试" })));
@@ -127,7 +127,7 @@ export class HttpClient {
 
     private useResponseError(error: any) {
         const url = get(error, "config.url", "");
-        Logger.error(`[${this.getTime()} HTTP ERROR]: ${url}`, error);
+        Logger.error(`[HTTP ERROR]: ${url}`, error);
         const res = get(error, "response.data", {
             code: 500,
             message: "请稍后重试",
