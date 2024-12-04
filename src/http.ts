@@ -46,6 +46,18 @@ export class HttpClient {
         if (!some([Platform.base, Platform.cli], (i) => i === platform)) {
             baseHeaders['system'] = getSystemKey()
         }
+        this.useRequestSuccess = this.useRequestSuccess.bind(this);
+        this.useRequestError = this.useRequestError.bind(this);
+        this.useResponseSuccess = this.useResponseSuccess.bind(this);
+        this.useResponseError = this.useResponseError.bind(this);
+        this.get = this.get.bind(this);
+        this.post = this.post.bind(this);
+        this.delete = this.delete.bind(this);
+        this.put = this.put.bind(this);
+        this.head = this.head.bind(this);
+        this.options = this.options.bind(this);
+        this.request = this.request.bind(this);
+        this.use = this.use.bind(this);
         this.instance = axios.create({
             baseURL: prefix,
             withCredentials: true,
