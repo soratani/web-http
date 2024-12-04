@@ -30,8 +30,8 @@ export type HttpData<D = any> = {
 export type HttpConfig<D = any> = AxiosRequestConfig<D>;
 
 export abstract class HttpPlugin {
-    abstract request(config: HttpConfig): HttpConfig | Promise<HttpConfig>;
-    abstract response(value: HttpData, config?: HttpConfig): Promise<HttpData> | HttpData;
+    abstract request(client: HttpClient, config: HttpConfig): HttpConfig | Promise<HttpConfig>;
+    abstract response(client: HttpClient,value: HttpData, config?: HttpConfig): Promise<HttpData> | HttpData;
 }
 
 export class HttpClient {
@@ -81,13 +81,15 @@ export class HttpClient {
     }
 
     private useRequestError() {
+        const client = this;
         return reduce(this.plugins, (pre, plugin) => {
-            return pre.then(plugin.response);
+            return pre.then((value) => plugin.response(client, value));
         }, Promise.reject({ code: 500, message: "请求异常" }));
     }
 
     private useRequestSuccess(config: HttpConfig): HttpConfig| Promise<HttpConfig> {
         const { headers } = config;
+        const client = this;
         const temp: Partial<AxiosRequestHeaders> = { ...headers } as any;
         const fingerprintId = localStorageGetItem("fingerprintId", "");
         const token = getToken('access-token');
@@ -98,11 +100,11 @@ export class HttpClient {
             temp.fingerprint = fingerprintId;
             config.headers = mergeHeaders(temp);
             return reduce(this.plugins, async (pre, plugin) => {
-                return pre.then(plugin.request);
+                return pre.then((value) => plugin.request(client, value));
             }, Promise.resolve(config));
         }
         return reduce(this.plugins, async (pre, plugin) => {
-            return pre.then(plugin.request);
+            return pre.then((value) => plugin.request(client, value));
         }, getFingerprint().then((id) => {
             temp.fingerprint = id;
             config.headers = mergeHeaders(temp);
@@ -115,6 +117,7 @@ export class HttpClient {
         const refreshToken = get(value, "headers.refresh-token", "");
         const url = get(value, "config.url", "");
         const config = get(value, 'config', {}) as HttpConfig;
+        const client = this;
         if (accessToken) {
             localStorageSetItem("access-token", accessToken);
         }
@@ -123,7 +126,7 @@ export class HttpClient {
         }
         Logger.info(`[HTTP SUCCESS]: ${url}`, value);
         return reduce(this.plugins, (pre, plugin) => {
-            return pre.then((value) => plugin.response(value, config));
+            return pre.then((value) => plugin.response(client, value, config));
         }, Promise.resolve(get(value, "data", { code: 500, message: "请稍后重试" })));
     }
 
@@ -131,6 +134,7 @@ export class HttpClient {
         const url = get(error, "config.url", "");
         const status = get(error, 'status', 500);
         const config = get(error, "config", {});
+        const client = this;
         Logger.error(`[HTTP ERROR]: ${url}`, error);
         const res = get(error, "response.data", {
             code: status,
@@ -138,14 +142,14 @@ export class HttpClient {
         });
         if (!res) {
             return reduce(this.plugins, (pre, plugin) => {
-                return pre.catch((value) => plugin.response(value, config));
+                return pre.catch((value) => plugin.response(client, value, config));
             }, Promise.reject({
                 code: status,
                 message: "请稍后重试",
             }))
         }
         return reduce(this.plugins, (pre, plugin) => {
-            return pre.catch((value) => plugin.response(value, config));
+            return pre.catch((value) => plugin.response(client, value, config));
         }, Promise.reject(res))
     }
 
