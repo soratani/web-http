@@ -129,13 +129,23 @@ export class HttpClient {
 
     private useResponseError(error: any) {
         const url = get(error, "config.url", "");
+        const status = get(error, 'status', 500);
+        const config = get(error, "config", {});
         Logger.error(`[HTTP ERROR]: ${url}`, error);
         const res = get(error, "response.data", {
-            code: 500,
+            code: status,
             message: "请稍后重试",
         });
+        if (!res) {
+            return reduce(this.plugins, (pre, plugin) => {
+                return pre.catch((value) => plugin.response(value, config));
+            }, Promise.reject({
+                code: status,
+                message: "请稍后重试",
+            }))
+        }
         return reduce(this.plugins, (pre, plugin) => {
-            return pre.catch((value) => plugin.response(value, error));
+            return pre.catch((value) => plugin.response(value, config));
         }, Promise.reject(res))
     }
 
