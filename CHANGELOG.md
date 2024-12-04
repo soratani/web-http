@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.0.12
+
+### Patch Changes
+
+- dffa007: 1.0.12
+
 ## 1.0.11
 
 ### Patch Changes
