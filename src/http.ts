@@ -65,7 +65,7 @@ export class HttpClient {
             withCredentials: true,
             headers: baseHeaders
         });
-        this.instance.interceptors.request.use(this.useRequestSuccess,this.useRequestError);
+        this.instance.interceptors.request.use(this.useRequestSuccess as any,this.useRequestError);
         this.instance.interceptors.response.use(this.useResponseSuccess, this.useResponseError);
     }
 
