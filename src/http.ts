@@ -1,4 +1,4 @@
-import axios, { AxiosRequestHeaders } from "axios";
+import axios, { AxiosRequestConfig, AxiosRequestHeaders } from "axios";
 import { get, reduce, some } from "lodash";
 import { getFingerprint, getSystemKey, getToken, mergeHeaders } from "./utils";
 import { localStorageGetItem, localStorageSetItem } from "./storage";
@@ -27,9 +27,11 @@ export type HttpData<D = any> = {
     data?: D;
 }
 
+export type HttpConfig<D = any> = AxiosRequestConfig<D>;
+
 export abstract class HttpPlugin {
-    abstract request(config: axios.InternalAxiosRequestConfig<any>): axios.InternalAxiosRequestConfig<any> | Promise<axios.InternalAxiosRequestConfig<any>>;
-    abstract response(value: HttpData, config?: axios.InternalAxiosRequestConfig<any>): Promise<HttpData> | HttpData;
+    abstract request(config: HttpConfig): HttpConfig | Promise<HttpConfig>;
+    abstract response(value: HttpData, config?: HttpConfig): Promise<HttpData> | HttpData;
 }
 
 export class HttpClient {
@@ -84,9 +86,9 @@ export class HttpClient {
         }, Promise.reject({ code: 500, message: "请求异常" }));
     }
 
-    private useRequestSuccess(config: axios.InternalAxiosRequestConfig<any>): axios.InternalAxiosRequestConfig<any> | Promise<axios.InternalAxiosRequestConfig<any>> {
+    private useRequestSuccess(config: HttpConfig): HttpConfig| Promise<HttpConfig> {
         const { headers } = config;
-        const temp: Partial<AxiosRequestHeaders> = { ...headers };
+        const temp: Partial<AxiosRequestHeaders> = { ...headers } as any;
         const fingerprintId = localStorageGetItem("fingerprintId", "");
         const token = getToken('access-token');
         if (token) {
@@ -112,7 +114,7 @@ export class HttpClient {
         const accessToken = get(value, "headers.access-token", "");
         const refreshToken = get(value, "headers.refresh-token", "");
         const url = get(value, "config.url", "");
-        const config = get(value, 'config', {}) as axios.InternalAxiosRequestConfig<any>;
+        const config = get(value, 'config', {}) as HttpConfig;
         if (accessToken) {
             localStorageSetItem("access-token", accessToken);
         }
@@ -148,31 +150,31 @@ export class HttpClient {
         this.plugins.push(plugin);
     }
 
-    request<D = any>(config: axios.AxiosRequestConfig<any>): Promise<HttpData<D>> {
+    request<D = any, P = any>(config: HttpConfig<P>): Promise<HttpData<D>> {
         return this.instance(config)
     }
 
-    get<D = any>(url: string, config?: axios.AxiosRequestConfig<any>): Promise<HttpData<D>> {
+    get<D = any>(url: string, config?: HttpConfig): Promise<HttpData<D>> {
         return this.instance.get(url, config);
     }
 
-    post<D = any>(url: string, data?: any, config?: axios.AxiosRequestConfig<any>): Promise<HttpData<D>> {
+    post<D = any, P = any>(url: string, data?: any, config?: HttpConfig<P>): Promise<HttpData<D>> {
         return this.instance.post(url, data, config);
     }
 
-    delete<D = any>(url: string, config?: axios.AxiosRequestConfig<any>): Promise<HttpData<D>> {
+    delete<D = any>(url: string, config?: HttpConfig): Promise<HttpData<D>> {
         return this.instance.delete(url, config);
     }
 
-    put<D = any>(url: string, data?: any, config?: axios.AxiosRequestConfig<any>): Promise<HttpData<D>> {
+    put<D = any, P = any>(url: string, data?: P, config?: HttpConfig<P>): Promise<HttpData<D>> {
         return this.instance.put(url, data, config);
     }
 
-    head<D = any>(url: string, config?: axios.AxiosRequestConfig<any>): Promise<HttpData<D>> {
+    head<D = any>(url: string, config?: HttpConfig): Promise<HttpData<D>> {
         return this.instance.head(url, config);
     }
 
-    options<D = any>(url: string, config?: axios.AxiosRequestConfig<any>): Promise<HttpData<D>> {
+    options<D = any>(url: string, config?: HttpConfig): Promise<HttpData<D>> {
         return this.instance.options(url, config)
     }
 }
