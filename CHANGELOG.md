@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.0.15
+
+### Patch Changes
+
+- f911d29: 优化功能
+
 ## 1.0.14
 
 ### Patch Changes
