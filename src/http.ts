@@ -16,6 +16,7 @@ export enum Platform {
 export type HttpClientOptions = {
     storage?: Storage;
     logger?: HttpLogger;
+    fingerprint?: () => Promise<string>;
     platform?: Platform;
     prefix: string;
     app?: string;
@@ -112,6 +113,7 @@ export class HttpClient {
         const temp: Partial<AxiosRequestHeaders> = { ...headers } as any;
         const fingerprintId = this.storage.get("fingerprintId", "");
         const token = this.storage.get('access-token', '');
+        const createId = get(this.option, 'fingerprint', getFingerprint);
         if (token) {
             temp.Authorization = `Bearer ${token}`
         }
@@ -124,7 +126,7 @@ export class HttpClient {
         }
         return reduce(this.plugins, async (pre, plugin) => {
             return pre.then((value) => plugin.request(client, value));
-        }, getFingerprint().then((id) => {
+        }, createId().then((id) => {
             temp.fingerprint = id;
             this.storage.set('fingerprintId', id);
             config.headers = this.mergeHeaders(temp);
