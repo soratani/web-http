@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.0.16
+
+### Patch Changes
+
+- fc8b0ad: 唯一 id
+
 ## 1.0.15
 
 ### Patch Changes
