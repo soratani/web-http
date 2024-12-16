@@ -1,8 +1,8 @@
 import axios, { AxiosRequestConfig, AxiosRequestHeaders } from "axios";
 import { get, reduce, some } from "lodash";
-import { getFingerprint, getSystemKey, getToken, mergeHeaders } from "./utils";
-import { localStorageGetItem, localStorageSetItem } from "./storage";
+import { getFingerprint, getSystemKey } from "./utils";
 import Logger from "./logger";
+import { DefaultStorage } from "./storage";
 
 export enum Platform {
     desktop,
@@ -14,6 +14,8 @@ export enum Platform {
 }
 
 export type HttpClientOptions = {
+    storage?: Storage;
+    logger?: HttpLogger;
     platform?: Platform;
     prefix: string;
     app?: string;
@@ -29,6 +31,18 @@ export type HttpData<D = any> = {
 
 export type HttpConfig<D = any> = AxiosRequestConfig<D>;
 
+export abstract class Storage {
+    abstract get(key: string, value?: any): any;
+    abstract set(key: string, value: any): any;
+}
+
+export abstract class HttpLogger {
+    abstract log(label: string, message: string): void;
+    abstract info(label: string, ...message: any[]): void;
+    abstract warn(label: string, ...message: any[]): void;
+    abstract error(label: string, ...message: any[]): void;
+}
+
 export abstract class HttpPlugin {
     abstract request(client: HttpClient, config: HttpConfig): HttpConfig | Promise<HttpConfig>;
     abstract response(client: HttpClient,value: HttpData, config?: HttpConfig): Promise<HttpData> | HttpData;
@@ -37,8 +51,12 @@ export abstract class HttpPlugin {
 export class HttpClient {
     private instance: axios.AxiosInstance;
     private plugins: HttpPlugin[] = [];
+    private storage: Storage;
+    private logger: HttpLogger;
     constructor(private readonly option: HttpClientOptions) {
         const { platform, app, sign, version, prefix } = this.option;
+        this.storage = this.option.storage || new DefaultStorage();
+        this.logger = this.option.logger || new Logger();
         const baseHeaders = {
             app,
             sign,
@@ -69,15 +87,16 @@ export class HttpClient {
         this.instance.interceptors.response.use(this.useResponseSuccess, this.useResponseError);
     }
 
-    private getTime() {
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = now.getMonth() + 1; // 月份从 0 开始，所以要加 1
-        const day = now.getDate();
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        const seconds = String(now.getSeconds()).padStart(2, '0');
-        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    private mergeHeaders(headers: Partial<AxiosRequestHeaders>): AxiosRequestHeaders {
+        const accessToken = this.storage.get("access-token", '');
+        const refreshToken = this.storage.get("refresh-token", '');
+        if (accessToken) {
+            headers.Authorization = `Bearer ${accessToken}`;
+        }
+        if (refreshToken) {
+            headers["Refresh-Token"] = refreshToken;
+        }
+        return headers as AxiosRequestHeaders;
     }
 
     private useRequestError() {
@@ -91,14 +110,14 @@ export class HttpClient {
         const { headers } = config;
         const client = this;
         const temp: Partial<AxiosRequestHeaders> = { ...headers } as any;
-        const fingerprintId = localStorageGetItem("fingerprintId", "");
-        const token = getToken('access-token');
+        const fingerprintId = this.storage.get("fingerprintId", "");
+        const token = this.storage.get('access-token', '');
         if (token) {
             temp.Authorization = `Bearer ${token}`
         }
         if (fingerprintId) {
             temp.fingerprint = fingerprintId;
-            config.headers = mergeHeaders(temp);
+            config.headers = this.mergeHeaders(temp);
             return reduce(this.plugins, async (pre, plugin) => {
                 return pre.then((value) => plugin.request(client, value));
             }, Promise.resolve(config));
@@ -107,7 +126,8 @@ export class HttpClient {
             return pre.then((value) => plugin.request(client, value));
         }, getFingerprint().then((id) => {
             temp.fingerprint = id;
-            config.headers = mergeHeaders(temp);
+            this.storage.set('fingerprintId', id);
+            config.headers = this.mergeHeaders(temp);
             return config;
         }));
     }
@@ -119,12 +139,12 @@ export class HttpClient {
         const config = get(value, 'config', {}) as HttpConfig;
         const client = this;
         if (accessToken) {
-            localStorageSetItem("access-token", accessToken);
+            this.storage.set("access-token", accessToken);
         }
         if (refreshToken) {
-            localStorageSetItem("refresh-token", refreshToken);
+            this.storage.set("refresh-token", refreshToken);
         }
-        Logger.info(`[HTTP SUCCESS]: ${url}`, value);
+        this.logger.info(`[HTTP SUCCESS]: ${url}`, value);
         return reduce(this.plugins, (pre, plugin) => {
             return pre.then((value) => plugin.response(client, value, config));
         }, Promise.resolve(get(value, "data", { code: 500, message: "请稍后重试" })));
@@ -135,7 +155,7 @@ export class HttpClient {
         const status = get(error, 'status', 500);
         const config = get(error, "config", {});
         const client = this;
-        Logger.error(`[HTTP ERROR]: ${url}`, error);
+        this.logger.error(`[HTTP ERROR]: ${url}`, error);
         const res = get(error, "response.data", {
             code: status,
             message: "请稍后重试",
@@ -154,8 +174,8 @@ export class HttpClient {
     }
 
     clearAuth() {
-        localStorageSetItem('refresh-token', '');
-        localStorageSetItem('access-token', '');
+        this.storage.set('refresh-token', '');
+        this.storage.set('access-token', '');
     }
 
     use(plugin: HttpPlugin): HttpClient {
