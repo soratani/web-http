@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.0.19
+
+### Patch Changes
+
+- c13ae3f: 版本异常
+
 ## 1.0.18
 
 ### Patch Changes
