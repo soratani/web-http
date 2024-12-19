@@ -1,6 +1,6 @@
 {
   "name": "@soratani-code/web-http",
-  "version": "1.0.20",
+  "version": "1.0.21",
   "description": "",
   "scripts": {
     "build": "rm -rf lib && tsc -p tsconfig.json && tsc-alias",
