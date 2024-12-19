@@ -58,7 +58,11 @@ export class HttpClient {
     constructor(private readonly option: HttpClientOptions) {
         const { platform, app, sign, version, prefix } = this.option;
         this.storage = this.option.storage || new DefaultStorage();
-        this.logger = this.option.logger || new Logger();
+        if (this.option.logger) {
+            this.logger = this.option.logger;
+        } else {
+            this.logger = new Logger();
+        }
         const baseHeaders = {
             app,
             sign,
