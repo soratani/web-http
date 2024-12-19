@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.0.23
+
+### Patch Changes
+
+- a08c312: 日志
+
 ## 1.0.22
 
 ### Patch Changes
