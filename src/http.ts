@@ -1,7 +1,6 @@
 import axios, { AxiosRequestConfig, AxiosRequestHeaders } from "axios";
 import { get, reduce, some } from "lodash";
 import { getFingerprint, getSystemKey } from "./utils";
-import { DefaultStorage } from "./storage";
 
 export enum Platform {
     desktop,
@@ -47,6 +46,22 @@ export abstract class HttpLogger {
 export abstract class HttpPlugin {
     abstract request(client: HttpClient, config: HttpConfig): HttpConfig | Promise<HttpConfig>;
     abstract response(client: HttpClient,value: HttpData, config?: HttpConfig): Promise<HttpData> | HttpData;
+}
+
+class DefaultStorage extends Storage {
+	private cache: Record<string, any> = {};
+	get(key: string, value?: any) {
+		try {
+			return this.cache[key];
+		} catch (error) {
+			return value;
+		}
+	}
+	set(key: string, value: any) {
+		// @ts-ignore
+		this.cache[key] = value;
+	}
+	
 }
 
 export class HttpClient {
