@@ -1,4 +1,4 @@
-import { HttpLogger } from "./http";
+import * as Http from "./http";
 
 function isString(str: any): str is string {
     return Object.prototype.toString.call(str) === '[object String]'
@@ -15,7 +15,7 @@ function getTime() {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
-export default class Logger extends HttpLogger {
+export default class Logger extends Http.HttpLogger {
   log(label: string, message: string) {
     const _label = `${getTime()} ${label}`;
     // @ts-ignore
