@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.0.22
+
+### Patch Changes
+
+- 4d55f9e: storage
+
 ## 1.0.21
 
 ### Patch Changes
