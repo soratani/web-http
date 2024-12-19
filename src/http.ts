@@ -1,7 +1,6 @@
 import axios, { AxiosRequestConfig, AxiosRequestHeaders } from "axios";
 import { get, reduce, some } from "lodash";
 import { getFingerprint, getSystemKey } from "./utils";
-import Logger from "./logger";
 import { DefaultStorage } from "./storage";
 
 export enum Platform {
@@ -58,11 +57,6 @@ export class HttpClient {
     constructor(private readonly option: HttpClientOptions) {
         const { platform, app, sign, version, prefix } = this.option;
         this.storage = this.option.storage || new DefaultStorage();
-        if (this.option.logger) {
-            this.logger = this.option.logger;
-        } else {
-            this.logger = new Logger();
-        }
         const baseHeaders = {
             app,
             sign,
@@ -151,7 +145,7 @@ export class HttpClient {
         if (refreshToken) {
             this.storage.set("refresh-token", refreshToken);
         }
-        this.logger.info(`[HTTP SUCCESS]: ${url}`, value);
+        this.logger?.info(`[HTTP SUCCESS]: ${url}`, value);
         return reduce(this.plugins, (pre, plugin) => {
             return pre.then((value) => plugin.response(client, value, config));
         }, Promise.resolve(get(value, "data", { code: 500, message: "请稍后重试" })));
@@ -162,7 +156,7 @@ export class HttpClient {
         const status = get(error, 'status', 500);
         const config = get(error, "config", {});
         const client = this;
-        this.logger.error(`[HTTP ERROR]: ${url}`, error);
+        this.logger?.error(`[HTTP ERROR]: ${url}`, error);
         const res = get(error, "response.data", {
             code: status,
             message: "请稍后重试",
