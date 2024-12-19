@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.0.20
+
+### Patch Changes
+
+- b8889fa: logger
+
 ## 1.0.19
 
 ### Patch Changes
