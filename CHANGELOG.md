@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.0.18
+
+### Patch Changes
+
+- d9c0b9a: logger
+
 ## 1.0.17
 
 ### Patch Changes
