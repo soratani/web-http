@@ -13,7 +13,7 @@
       "outDir": "./lib",
       "rootDir": "./src",
       "skipLibCheck": true,
-      "lib": ["ES2017", "DOM"],
+      "lib": ["ES2017"],
       "paths": {
         "@/*": ["./src/*"]
       }

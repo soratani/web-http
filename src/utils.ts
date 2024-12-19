@@ -25,6 +25,7 @@ export async function getFingerprint() {
 }
 
 export function getSystem() {
+	// @ts-ignore
 	const userAgent = navigator.userAgent;
 	let os = 'Unknown';
 	if (/Windows NT/.test(userAgent)) {
