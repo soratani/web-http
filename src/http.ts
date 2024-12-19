@@ -38,6 +38,7 @@ export abstract class Storage {
 }
 
 export abstract class HttpLogger {
+    constructor() {}
     abstract log(label: string, message: string): void;
     abstract info(label: string, ...message: any[]): void;
     abstract warn(label: string, ...message: any[]): void;
