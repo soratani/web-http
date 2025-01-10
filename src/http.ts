@@ -31,6 +31,7 @@ export type HttpData<D = any> = {
 export type HttpConfig<D = any> = AxiosRequestConfig<D> & {
     retry?: number;
     noIntercept?: boolean;
+    hint?: boolean;
 };
 
 export abstract class HttpPlugin {
