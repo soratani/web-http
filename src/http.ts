@@ -1,6 +1,6 @@
 import axios, { AxiosRequestConfig, AxiosRequestHeaders } from "axios";
-import { get, reduce, some } from "lodash";
-import { getFingerprint, getSystemKey } from "./utils";
+import { get, isBoolean, isFunction, isNumber, reduce } from "lodash";
+import { DefaultStorage, HttpLogger, Storage } from "./plugins";
 
 export enum Platform {
     desktop,
@@ -28,40 +28,14 @@ export type HttpData<D = any> = {
     data?: D;
 }
 
-export type HttpConfig<D = any> = AxiosRequestConfig<D>;
-
-export abstract class Storage {
-    abstract get(key: string, value?: any): any;
-    abstract set(key: string, value: any): any;
-}
-
-export abstract class HttpLogger {
-    constructor() {}
-    abstract log(label: string, message: string): void;
-    abstract info(label: string, ...message: any[]): void;
-    abstract warn(label: string, ...message: any[]): void;
-    abstract error(label: string, ...message: any[]): void;
-}
+export type HttpConfig<D = any> = AxiosRequestConfig<D> & {
+    retry?: number;
+    noIntercept?: boolean;
+};
 
 export abstract class HttpPlugin {
     abstract request(client: HttpClient, config: HttpConfig): HttpConfig | Promise<HttpConfig>;
-    abstract response(client: HttpClient,value: HttpData, config?: HttpConfig): Promise<HttpData> | HttpData;
-}
-
-class DefaultStorage extends Storage {
-	private cache: Record<string, any> = {};
-	get(key: string, value?: any) {
-		try {
-			return this.cache[key];
-		} catch (error) {
-			return value;
-		}
-	}
-	set(key: string, value: any) {
-		// @ts-ignore
-		this.cache[key] = value;
-	}
-	
+    abstract response(client: HttpClient, config: HttpConfig, value: HttpData): Promise<HttpData> | HttpData;
 }
 
 export class HttpClient {
@@ -78,9 +52,6 @@ export class HttpClient {
             sign,
             version,
             platform,
-        }
-        if (!some([Platform.base, Platform.cli], (i) => i === platform)) {
-            baseHeaders['system'] = getSystemKey()
         }
         this.useRequestSuccess = this.useRequestSuccess.bind(this);
         this.useRequestError = this.useRequestError.bind(this);
@@ -115,10 +86,10 @@ export class HttpClient {
         return headers as AxiosRequestHeaders;
     }
 
-    private useRequestError() {
+    private useRequestError(error: any) {
         const client = this;
         return reduce(this.plugins, (pre, plugin) => {
-            return pre.then((value) => plugin.response(client, value));
+            return pre.then((value) => plugin.response(client, error, value));
         }, Promise.reject({ code: 500, message: "请求异常" }));
     }
 
@@ -128,7 +99,7 @@ export class HttpClient {
         const temp: Partial<AxiosRequestHeaders> = { ...headers } as any;
         const fingerprintId = this.storage.get("fingerprintId", "");
         const token = this.storage.get('access-token', '');
-        const createId = get(this.option, 'fingerprint', getFingerprint);
+        const createId = get(this.option, 'fingerprint');
         if (token) {
             temp.Authorization = `Bearer ${token}`
         }
@@ -139,14 +110,20 @@ export class HttpClient {
                 return pre.then((value) => plugin.request(client, value));
             }, Promise.resolve(config));
         }
+        if (isFunction(createId)) {
+            return reduce(this.plugins, async (pre, plugin) => {
+                return pre.then((value) => plugin.request(client, value));
+            }, createId().then((id) => {
+                temp.fingerprint = id;
+                this.storage.set('fingerprintId', id);
+                config.headers = this.mergeHeaders(temp);
+                return config;
+            }));
+        }
+        config.headers = this.mergeHeaders(temp);
         return reduce(this.plugins, async (pre, plugin) => {
             return pre.then((value) => plugin.request(client, value));
-        }, createId().then((id) => {
-            temp.fingerprint = id;
-            this.storage.set('fingerprintId', id);
-            config.headers = this.mergeHeaders(temp);
-            return config;
-        }));
+        }, Promise.resolve(config));
     }
 
     private useResponseSuccess(value: axios.AxiosResponse<any, any>) {
@@ -155,6 +132,10 @@ export class HttpClient {
         const url = get(value, "config.url", "");
         const config = get(value, 'config', {}) as HttpConfig;
         const client = this;
+        const defaultStatus = {
+            code: 500,
+            message: "请稍后重试",
+        }
         if (accessToken) {
             this.storage.set("access-token", accessToken);
         }
@@ -162,32 +143,40 @@ export class HttpClient {
             this.storage.set("refresh-token", refreshToken);
         }
         this.logger?.info(`[HTTP SUCCESS]: ${url}`, value);
+        if (isBoolean(config.noIntercept) && !config.noIntercept) return Promise.resolve(get(value, "data", defaultStatus))
         return reduce(this.plugins, (pre, plugin) => {
-            return pre.then((value) => plugin.response(client, value, config));
-        }, Promise.resolve(get(value, "data", { code: 500, message: "请稍后重试" })));
+            return pre.then((value) => plugin.response(client, config, value));
+        }, Promise.resolve(get(value, "data", defaultStatus)));
     }
 
     private useResponseError(error: any) {
         const url = get(error, "config.url", "");
         const status = get(error, 'status', 500);
-        const config = get(error, "config", {});
+        const config = get(error, "config", {}) as HttpConfig;
         const client = this;
-        this.logger?.error(`[HTTP ERROR]: ${url}`, error);
-        const res = get(error, "response.data", {
+        const defaultStatus = {
             code: status,
             message: "请稍后重试",
-        });
+        }
+        this.logger?.error(`[HTTP ERROR]: ${url}`, error);
+        // 重试逻辑
+        if(isNumber(config.retry) && config.retry) {
+            config.retry -=1;
+            return this.instance.request(config);
+        }
+        const res = get(error, "response.data", defaultStatus);
         if (!res) {
             return reduce(this.plugins, (pre, plugin) => {
-                return pre.catch((value) => plugin.response(client, value, config));
-            }, Promise.reject({
-                code: status,
-                message: "请稍后重试",
-            }))
+                return pre.catch((value) => plugin.response(client, config, value));
+            }, Promise.reject(defaultStatus))
         }
         return reduce(this.plugins, (pre, plugin) => {
-            return pre.catch((value) => plugin.response(client, value, config));
+            return pre.catch((value) => plugin.response(client, config, value));
         }, Promise.reject(res))
+    }
+
+    get cache() {
+        return this.storage;
     }
 
     clearAuth() {
