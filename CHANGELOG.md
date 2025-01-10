@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.0.25
+
+### Patch Changes
+
+- 8bc10cd: 1.0.25
+
 ## 1.0.24
 
 ### Patch Changes
