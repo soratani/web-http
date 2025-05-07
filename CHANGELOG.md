@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.1.0
+
+### Minor Changes
+
+- c9d6ca2: 异步 storage
+
 ## 1.0.27
 
 ### Patch Changes
