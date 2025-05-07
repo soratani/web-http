@@ -112,6 +112,7 @@ export class HttpClient {
             const refreshToken = this.storage.get(refreshKey, '');
             if (refreshToken) {
                 headers.Authorization = `Bearer ${refreshToken}`;
+                config.headers = headers;
             }
             return config;
         }
