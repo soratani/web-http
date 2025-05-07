@@ -2,6 +2,10 @@ import axios, { AxiosRequestConfig, AxiosRequestHeaders } from "axios";
 import { get, isBoolean, isFunction, isNumber, reduce } from "lodash";
 import { DefaultStorage, HttpLogger, Storage } from "./plugins";
 
+function isAsyncFunction(fn: Function): boolean {
+    return fn.constructor.name === "AsyncFunction";
+}
+
 export enum Platform {
     desktop,
     app,
@@ -104,12 +108,12 @@ export class HttpClient {
         return func;
     }
 
-    private mergeAuthToken(config: HttpConfig): HttpConfig {
+    private async mergeAuthToken(config: HttpConfig): Promise<HttpConfig> {
         const headers = { ...config.headers } as AxiosRequestHeaders;
         const { accessKey, refreshKey } = get<HttpClientOptions, "token", HttpClientToken>(this.option, 'token', {});
         const refreshPath = get(this.option, 'token.refreshPath', '');
         if (refreshPath && config.url.endsWith(refreshPath) && refreshKey) {
-            const refreshToken = this.storage.get(refreshKey, '');
+            const refreshToken = await this.storage.get(refreshKey, '');
             if (refreshToken) {
                 headers.Authorization = `Bearer ${refreshToken}`;
                 config.headers = headers;
@@ -117,7 +121,7 @@ export class HttpClient {
             return config;
         }
         if (accessKey) {
-            const accessToken = this.storage.get(accessKey, '');
+            const accessToken = await this.storage.get(accessKey, '');
             if (accessToken) {
                 headers.Authorization = `Bearer ${accessToken}`;
             }
@@ -126,9 +130,9 @@ export class HttpClient {
         return config;
     }
 
-    private mergeDeviceId(config: HttpConfig): Promise<HttpConfig> {
+    private async mergeDeviceId(config: HttpConfig): Promise<HttpConfig> {
         const temp = { ...config.headers } as AxiosRequestHeaders;
-        const deviceId = this.storage.get("deviceId", "");
+        const deviceId = await this.storage.get("deviceId", "");
         const createId = get(this.option, 'device');
         if (deviceId) {
             temp.device = deviceId;
@@ -136,9 +140,9 @@ export class HttpClient {
             return Promise.resolve(config);
         }
         if (isFunction(createId)) {
-            return createId().then((id) => {
+            return createId().then(async (id) => {
                 temp.device = id;
-                this.storage.set('deviceId', id);
+                await this.storage.set('deviceId', id);
                 config.headers = temp;
                 return config;
             });
@@ -146,16 +150,16 @@ export class HttpClient {
         return Promise.resolve(config);
     }
 
-    private mergeTokenFromResponse(value: axios.AxiosResponse<any, any>) {
+    private async mergeTokenFromResponse(value: axios.AxiosResponse<any, any>) {
         const { accessKey, refreshKey } = get<HttpClientOptions, "token", HttpClientToken>(this.option, 'token', {});
         if (accessKey && refreshKey) {
             const accessToken = get(value, `headers.${accessKey}`, "");
             const refreshToken = get(value, `headers.${refreshKey}`, "");
             if (accessToken) {
-                this.storage.set(accessKey, accessToken);
+               await this.storage.set(accessKey, accessToken);
             }
             if (refreshToken) {
-                this.storage.set(refreshKey, refreshToken);
+               await this.storage.set(refreshKey, refreshToken);
             }
         }
     }
@@ -180,13 +184,14 @@ export class HttpClient {
         if (this.wait && !config.url.endsWith(refreshPath)) {
             await this.wait;
         }
-        const _config = this.mergeDeviceId(this.mergeAuthToken(config));
-        return reduce(this.plugins, async (pre, plugin) => {
+        const temp = await this.mergeAuthToken(config);
+        const _config = this.mergeDeviceId(temp);
+        return reduce(this.plugins, (pre, plugin) => {
             return pre.then((value) => plugin.request(client, value));
         }, _config);
     }
 
-    private useResponseSuccess(value: axios.AxiosResponse<any, any>) {
+    private async useResponseSuccess(value: axios.AxiosResponse<any, any>) {
         const url = get(value, "config.url", "");
         const config = get(value, 'config', {}) as HttpConfig;
         const defaultStatus = {
@@ -194,7 +199,7 @@ export class HttpClient {
             message: "请稍后重试",
         }
         const res = get(value, "data", defaultStatus);
-        this.mergeTokenFromResponse(value);
+        await this.mergeTokenFromResponse(value);
         this.logger?.info(`[HTTP SUCCESS]: ${url}`, value);
         if (isBoolean(config.noIntercept) && !config.noIntercept) return Promise.resolve(res);
         return this.useResponsePipeline(config, res);
@@ -230,13 +235,13 @@ export class HttpClient {
         return this.storage;
     }
 
-    clearAuth() {
+    async clearAuth() {
         const { accessKey, refreshKey } = get<HttpClientOptions, "token", HttpClientToken>(this.option, 'token', {});
         if (accessKey) {
-            this.storage.set(accessKey, '');
+            await this.storage.set(accessKey, '');
         }
         if (refreshKey) {
-            this.storage.set(refreshKey, '');
+            await this.storage.set(refreshKey, '');
         }
     }
 
