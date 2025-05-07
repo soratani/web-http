@@ -11,15 +11,27 @@ export enum Platform {
     base,
 }
 
+export type HttpClientToken = {
+    accessKey?: string;
+    refreshKey?: string;
+    refreshPath?: string;
+}
+
+export type HttpClientHeaders = {
+    platform: Platform;
+    prefix: string;
+    app: string;
+    version: string;
+    sign: string;
+}
+
 export type HttpClientOptions = {
     storage?: Storage;
     logger?: HttpLogger;
-    fingerprint?: () => Promise<string>;
-    platform?: Platform;
-    prefix: string;
-    app?: string;
-    version?: string;
-    sign?: string;
+    retry?: number;
+    device?: () => Promise<string>;
+    token?: HttpClientToken;
+    headers: HttpClientHeaders;
 }
 
 export type HttpData<D = any> = {
@@ -44,8 +56,9 @@ export class HttpClient {
     private plugins: HttpPlugin[] = [];
     private storage: Storage;
     private logger: HttpLogger;
+    private wait: Promise<boolean>;
     constructor(private readonly option: HttpClientOptions) {
-        const { platform, app, sign, version, prefix } = this.option;
+        const { platform, app, sign, version, prefix } = this.option.headers || {};
         this.storage = this.option.storage || new DefaultStorage();
         this.logger = option.logger;
         const baseHeaders = {
@@ -58,6 +71,11 @@ export class HttpClient {
         this.useRequestError = this.useRequestError.bind(this);
         this.useResponseSuccess = this.useResponseSuccess.bind(this);
         this.useResponseError = this.useResponseError.bind(this);
+        this.createWait = this.createWait.bind(this);
+        this.mergeDeviceId = this.mergeDeviceId.bind(this);
+        this.mergeAuthToken = this.mergeAuthToken.bind(this);
+        this.useResponsePipeline = this.useResponsePipeline.bind(this);
+        this.mergeTokenFromResponse = this.mergeTokenFromResponse.bind(this);
         this.get = this.get.bind(this);
         this.post = this.post.bind(this);
         this.delete = this.delete.bind(this);
@@ -75,16 +93,77 @@ export class HttpClient {
         this.instance.interceptors.response.use(this.useResponseSuccess, this.useResponseError);
     }
 
-    private mergeHeaders(headers: Partial<AxiosRequestHeaders>): AxiosRequestHeaders {
-        const accessToken = this.storage.get("access-token", '');
-        const refreshToken = this.storage.get("refresh-token", '');
-        if (accessToken) {
-            headers.Authorization = `Bearer ${accessToken}`;
+    private createWait() {
+        let func;
+        this.wait = new Promise((resolve) => {
+            func = (status: boolean) => {
+                resolve(status);
+                this.wait = null;
+            };
+        })
+        return func;
+    }
+
+    private mergeAuthToken(config: HttpConfig): HttpConfig {
+        const headers = { ...config.headers } as AxiosRequestHeaders;
+        const { accessKey, refreshKey } = get<HttpClientOptions, "token", HttpClientToken>(this.option, 'token', {});
+        const refreshPath = get(this.option, 'token.refreshPath', '');
+        if (refreshPath && config.url.endsWith(refreshPath) && refreshKey) {
+            const refreshToken = this.storage.get(refreshKey, '');
+            if (refreshToken) {
+                headers.Authorization = `Bearer ${refreshToken}`;
+            }
+            return config;
         }
-        if (refreshToken) {
-            headers["Refresh-Token"] = refreshToken;
+        if (accessKey) {
+            const accessToken = this.storage.get(accessKey, '');
+            if (accessToken) {
+                headers.Authorization = `Bearer ${accessToken}`;
+            }
         }
-        return headers as AxiosRequestHeaders;
+        config.headers = headers;
+        return config;
+    }
+
+    private mergeDeviceId(config: HttpConfig): Promise<HttpConfig> {
+        const temp = { ...config.headers } as AxiosRequestHeaders;
+        const deviceId = this.storage.get("deviceId", "");
+        const createId = get(this.option, 'device');
+        if (deviceId) {
+            temp.device = deviceId;
+            config.headers = temp;
+            return Promise.resolve(config);
+        }
+        if (isFunction(createId)) {
+            return createId().then((id) => {
+                temp.device = id;
+                this.storage.set('deviceId', id);
+                config.headers = temp;
+                return config;
+            });
+        }
+        return Promise.resolve(config);
+    }
+
+    private mergeTokenFromResponse(value: axios.AxiosResponse<any, any>) {
+        const { accessKey, refreshKey } = get<HttpClientOptions, "token", HttpClientToken>(this.option, 'token', {});
+        if (accessKey && refreshKey) {
+            const accessToken = get(value, `headers.${accessKey}`, "");
+            const refreshToken = get(value, `headers.${refreshKey}`, "");
+            if (accessToken) {
+                this.storage.set(accessKey, accessToken);
+            }
+            if (refreshToken) {
+                this.storage.set(refreshKey, refreshToken);
+            }
+        }
+    }
+
+    private useResponsePipeline(config: HttpConfig, val: any) {
+        const client = this;
+        return reduce(this.plugins, (pre, plugin) => {
+            return pre.then((value) => plugin.response(client, config, value));
+        }, Promise.resolve(val));
     }
 
     private useRequestError(error: any) {
@@ -94,64 +173,36 @@ export class HttpClient {
         }, Promise.reject({ code: 500, message: "请求异常" }));
     }
 
-    private useRequestSuccess(config: HttpConfig): HttpConfig| Promise<HttpConfig> {
-        const { headers } = config;
+    private async useRequestSuccess(config: HttpConfig): Promise<HttpConfig> {
         const client = this;
-        const temp: Partial<AxiosRequestHeaders> = { ...headers } as any;
-        const fingerprintId = this.storage.get("fingerprintId", "");
-        const token = this.storage.get('access-token', '');
-        const createId = get(this.option, 'fingerprint');
-        if (token) {
-            temp.Authorization = `Bearer ${token}`
+        const refreshPath = get(this.option, 'token.refreshPath', '');
+        if (this.wait && !config.url.endsWith(refreshPath)) {
+            await this.wait;
         }
-        if (fingerprintId) {
-            temp.fingerprint = fingerprintId;
-            config.headers = this.mergeHeaders(temp);
-            return reduce(this.plugins, async (pre, plugin) => {
-                return pre.then((value) => plugin.request(client, value));
-            }, Promise.resolve(config));
-        }
-        if (isFunction(createId)) {
-            return reduce(this.plugins, async (pre, plugin) => {
-                return pre.then((value) => plugin.request(client, value));
-            }, createId().then((id) => {
-                temp.fingerprint = id;
-                this.storage.set('fingerprintId', id);
-                config.headers = this.mergeHeaders(temp);
-                return config;
-            }));
-        }
-        config.headers = this.mergeHeaders(temp);
+        const _config = this.mergeDeviceId(this.mergeAuthToken(config));
         return reduce(this.plugins, async (pre, plugin) => {
             return pre.then((value) => plugin.request(client, value));
-        }, Promise.resolve(config));
+        }, _config);
     }
 
     private useResponseSuccess(value: axios.AxiosResponse<any, any>) {
-        const accessToken = get(value, "headers.access-token", "");
-        const refreshToken = get(value, "headers.refresh-token", "");
         const url = get(value, "config.url", "");
         const config = get(value, 'config', {}) as HttpConfig;
-        const client = this;
         const defaultStatus = {
             code: 500,
             message: "请稍后重试",
         }
-        if (accessToken) {
-            this.storage.set("access-token", accessToken);
-        }
-        if (refreshToken) {
-            this.storage.set("refresh-token", refreshToken);
-        }
+        const res = get(value, "data", defaultStatus);
+        this.mergeTokenFromResponse(value);
         this.logger?.info(`[HTTP SUCCESS]: ${url}`, value);
-        if (isBoolean(config.noIntercept) && !config.noIntercept) return Promise.resolve(get(value, "data", defaultStatus))
-        return reduce(this.plugins, (pre, plugin) => {
-            return pre.then((value) => plugin.response(client, config, value));
-        }, Promise.resolve(get(value, "data", defaultStatus)));
+        if (isBoolean(config.noIntercept) && !config.noIntercept) return Promise.resolve(res);
+        return this.useResponsePipeline(config, res);
     }
 
-    private useResponseError(error: any) {
-        const url = get(error, "config.url", "");
+    private async useResponseError(error: any) {
+        const refreshPath = get(this.option, 'token.refreshPath', '');
+        const refreshKey = get(this.option, 'token.refreshKey', '');
+        const url = get(error, "config.url", "") as string;
         const status = get(error, 'status', 500);
         const config = get(error, "config", {}) as HttpConfig;
         const client = this;
@@ -160,20 +211,18 @@ export class HttpClient {
             message: "请稍后重试",
         }
         this.logger?.error(`[HTTP ERROR]: ${url}`, error);
-        // 重试逻辑
-        if(isNumber(config.retry) && config.retry) {
-            config.retry -=1;
-            return this.instance.request(config);
-        }
         const res = get(error, "response.data", defaultStatus);
-        if (!res) {
-            return reduce(this.plugins, (pre, plugin) => {
-                return pre.catch((value) => plugin.response(client, config, value));
-            }, Promise.reject(defaultStatus))
+        if (refreshPath && refreshKey && status === 401 && !url.endsWith(refreshPath)) {
+            const wait = this.createWait();
+            const authRes = await client.get(refreshPath);
+            if (authRes.code == 1) {
+                wait(true);
+                return this.instance.request(config);
+            } else {
+                wait(false);
+            }
         }
-        return reduce(this.plugins, (pre, plugin) => {
-            return pre.catch((value) => plugin.response(client, config, value));
-        }, Promise.reject(res))
+        return this.useResponsePipeline(config, res);
     }
 
     get cache() {
@@ -181,8 +230,13 @@ export class HttpClient {
     }
 
     clearAuth() {
-        this.storage.set('refresh-token', '');
-        this.storage.set('access-token', '');
+        const { accessKey, refreshKey } = get<HttpClientOptions, "token", HttpClientToken>(this.option, 'token', {});
+        if (accessKey) {
+            this.storage.set(accessKey, '');
+        }
+        if (refreshKey) {
+            this.storage.set(refreshKey, '');
+        }
     }
 
     use(plugin: HttpPlugin): HttpClient {
