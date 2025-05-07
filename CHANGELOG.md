@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.0.26
+
+### Patch Changes
+
+- e1470b9: 无感刷新 token
+
 ## 1.0.25
 
 ### Patch Changes
