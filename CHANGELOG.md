@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.0.27
+
+### Patch Changes
+
+- baef692: token 合并问题
+
 ## 1.0.26
 
 ### Patch Changes
