@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.1.1
+
+### Patch Changes
+
+- 48546ee: axios 版本问题
+
 ## 1.1.0
 
 ### Minor Changes
