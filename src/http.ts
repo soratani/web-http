@@ -1,44 +1,49 @@
 import axios, { AxiosRequestConfig, AxiosRequestHeaders } from "axios";
-import { get, isBoolean, isFunction, isNumber, reduce } from "lodash";
+import { get, isBoolean, isFunction, isNumber, omit, reduce } from "lodash";
 import { DefaultStorage, HttpLogger, Storage } from "./plugins";
 
-function isAsyncFunction(fn: Function): boolean {
-    return fn.constructor.name === "AsyncFunction";
+function isScope(scopes: [number, number], value: number) {
+    return value >= scopes[0] && value <= scopes[1];
+}
+
+function isInclude(scopes: number[], value: number) {
+    return scopes.includes(value);
 }
 
 export enum Platform {
+    base,
     desktop,
     app,
     web,
     h5,
     cli,
-    base,
 }
 
-export type HttpClientToken = {
-    accessKey?: string;
-    refreshKey?: string;
-    refreshPath?: string;
+export type HttpClientRefrech = {
+    key: string;
+    path: string;
 }
 
 export type HttpClientHeaders = {
-    platform: Platform;
-    prefix: string;
-    app: string;
-    version: string;
-    sign: string;
+    platform?: Platform;
+    prefix?: string;
+    app?: string;
+    version?: string;
+    sign?: string;
+    device?: () => Promise<string>;
 }
 
 export type HttpClientOptions = {
     storage?: Storage;
     logger?: HttpLogger;
     retry?: number;
-    device?: () => Promise<string>;
-    token?: HttpClientToken;
+    access?: string;
+    refresh?: HttpClientRefrech;
     headers: HttpClientHeaders;
 }
 
 export type HttpData<D = any> = {
+    status: number;
     code: number;
     message: string;
     data?: D;
@@ -46,6 +51,12 @@ export type HttpData<D = any> = {
 
 export type HttpConfig<D = any> = AxiosRequestConfig<D> & {
     retry?: number;
+    noIntercept?: boolean;
+    hint?: boolean;
+};
+
+export type HttpCustomConfig<D = any> = AxiosRequestConfig<D> & {
+    retry?: boolean;
     noIntercept?: boolean;
     hint?: boolean;
 };
@@ -93,7 +104,7 @@ export class HttpClient {
             withCredentials: true,
             headers: baseHeaders
         });
-        this.instance.interceptors.request.use(this.useRequestSuccess as any,this.useRequestError);
+        this.instance.interceptors.request.use(this.useRequestSuccess as any, this.useRequestError);
         this.instance.interceptors.response.use(this.useResponseSuccess, this.useResponseError);
     }
 
@@ -110,18 +121,18 @@ export class HttpClient {
 
     private async mergeAuthToken(config: HttpConfig): Promise<HttpConfig> {
         const headers = { ...config.headers } as AxiosRequestHeaders;
-        const { accessKey, refreshKey } = get<HttpClientOptions, "token", HttpClientToken>(this.option, 'token', {});
-        const refreshPath = get(this.option, 'token.refreshPath', '');
-        if (refreshPath && config.url.endsWith(refreshPath) && refreshKey) {
-            const refreshToken = await this.storage.get(refreshKey, '');
+        const refresh = get(this.option, 'refresh');
+        const access = get(this.option, 'access', '')
+        if (refresh && config.url.endsWith(refresh.path) && refresh.key) {
+            const refreshToken = await this.storage.get(refresh.key, '');
             if (refreshToken) {
                 headers.Authorization = `Bearer ${refreshToken}`;
                 config.headers = headers;
             }
             return config;
         }
-        if (accessKey) {
-            const accessToken = await this.storage.get(accessKey, '');
+        if (access) {
+            const accessToken = await this.storage.get(access, '');
             if (accessToken) {
                 headers.Authorization = `Bearer ${accessToken}`;
             }
@@ -133,7 +144,7 @@ export class HttpClient {
     private async mergeDeviceId(config: HttpConfig): Promise<HttpConfig> {
         const temp = { ...config.headers } as AxiosRequestHeaders;
         const deviceId = await this.storage.get("deviceId", "");
-        const createId = get(this.option, 'device');
+        const createId = get(this.option, 'headers.device');
         if (deviceId) {
             temp.device = deviceId;
             config.headers = temp;
@@ -151,15 +162,18 @@ export class HttpClient {
     }
 
     private async mergeTokenFromResponse(value: axios.AxiosResponse<any, any>) {
-        const { accessKey, refreshKey } = get<HttpClientOptions, "token", HttpClientToken>(this.option, 'token', {});
-        if (accessKey && refreshKey) {
-            const accessToken = get(value, `headers.${accessKey}`, "");
-            const refreshToken = get(value, `headers.${refreshKey}`, "");
+        const refresh = get(this.option, 'refresh');
+        const access = get(this.option, 'access', '')
+        if (access) {
+            const accessToken = get(value, `headers.${access}`, "");
             if (accessToken) {
-               await this.storage.set(accessKey, accessToken);
+                await this.storage.set(access, accessToken);
             }
+        }
+        if (refresh) {
+            const refreshToken = get(value, `headers.${refresh.key}`, "");
             if (refreshToken) {
-               await this.storage.set(refreshKey, refreshToken);
+                await this.storage.set(refresh.key, refreshToken);
             }
         }
     }
@@ -180,11 +194,15 @@ export class HttpClient {
 
     private async useRequestSuccess(config: HttpConfig): Promise<HttpConfig> {
         const client = this;
-        const refreshPath = get(this.option, 'token.refreshPath', '');
-        if (this.wait && !config.url.endsWith(refreshPath)) {
+        const refresh = get(this.option, 'refresh');
+        const retry = get(this.option, 'retry', 0);
+        if (this.wait && refresh && !config.url.endsWith(refresh.path)) {
             await this.wait;
         }
-        const temp = await this.mergeAuthToken(config);
+        const temp = await this.mergeAuthToken(omit(config, ['retry']));
+        if (isBoolean(config.retry) && !isNumber(temp.retry)) {
+            temp.retry = retry;
+        }
         const _config = this.mergeDeviceId(temp);
         return reduce(this.plugins, (pre, plugin) => {
             return pre.then((value) => plugin.request(client, value));
@@ -194,7 +212,9 @@ export class HttpClient {
     private async useResponseSuccess(value: axios.AxiosResponse<any, any>) {
         const url = get(value, "config.url", "");
         const config = get(value, 'config', {}) as HttpConfig;
+        const status = get(value, 'status', 500);
         const defaultStatus = {
+            status: status,
             code: 500,
             message: "请稍后重试",
         }
@@ -206,22 +226,28 @@ export class HttpClient {
     }
 
     private async useResponseError(error: any) {
-        const refreshPath = get(this.option, 'token.refreshPath', '');
-        const refreshKey = get(this.option, 'token.refreshKey', '');
+        const refresh = get(this.option, 'refresh');
         const url = get(error, "config.url", "") as string;
         const status = get(error, 'status', 500);
-        const config = get(error, "config", {}) as HttpConfig;
+        const config = get(error, "config");
+        const _retry = get(config, 'retry');
         const client = this;
         const defaultStatus = {
+            status: status,
             code: status,
             message: "请稍后重试",
         }
+
         this.logger?.error(`[HTTP ERROR]: ${url}`, error);
         const res = get(error, "response.data", defaultStatus);
-        if (refreshPath && refreshKey && status === 401 && !url.endsWith(refreshPath)) {
+        if(isScope([500, 599], status) && isNumber(_retry) && _retry > 0) {
+            config.retry = _retry - 1;
+            return client.request(config as any)
+        }
+        if (isInclude([401, 403], status) && refresh && !url.endsWith(refresh.path)) {
             const wait = this.createWait();
-            const authRes = await client.get(refreshPath);
-            if (authRes.code == 1) {
+            const authRes = await client.get(refresh.path);
+            if (isInclude([201, 200], authRes.status)) {
                 wait(true);
                 return this.instance.request(config);
             } else {
@@ -236,12 +262,13 @@ export class HttpClient {
     }
 
     async clearAuth() {
-        const { accessKey, refreshKey } = get<HttpClientOptions, "token", HttpClientToken>(this.option, 'token', {});
-        if (accessKey) {
-            await this.storage.set(accessKey, '');
+        const refresh = get(this.option, 'refresh');
+        const access = get(this.option, 'access', '')
+        if (access) {
+            await this.storage.set(access, '');
         }
-        if (refreshKey) {
-            await this.storage.set(refreshKey, '');
+        if (refresh) {
+            await this.storage.set(refresh.key, '');
         }
     }
 
@@ -251,31 +278,31 @@ export class HttpClient {
         this.plugins.push(plugin);
     }
 
-    request<D = any, P = any>(config: HttpConfig<P>): Promise<HttpData<D>> {
+    request<D = any, P = any>(config: HttpCustomConfig<P>): Promise<HttpData<D>> {
         return this.instance(config)
     }
 
-    get<D = any>(url: string, config?: HttpConfig): Promise<HttpData<D>> {
+    get<D = any>(url: string, config?: Omit<HttpCustomConfig, 'data'>): Promise<HttpData<D>> {
         return this.instance.get(url, config);
     }
 
-    post<D = any, P = any>(url: string, data?: any, config?: HttpConfig<P>): Promise<HttpData<D>> {
+    post<D = any, P = any>(url: string, data?: P, config?: Omit<HttpCustomConfig, 'data'>): Promise<HttpData<D>> {
         return this.instance.post(url, data, config);
     }
 
-    delete<D = any>(url: string, config?: HttpConfig): Promise<HttpData<D>> {
+    delete<D = any>(url: string, config?: HttpCustomConfig): Promise<HttpData<D>> {
         return this.instance.delete(url, config);
     }
 
-    put<D = any, P = any>(url: string, data?: P, config?: HttpConfig<P>): Promise<HttpData<D>> {
+    put<D = any, P = any>(url: string, data?: P, config?: Omit<HttpCustomConfig, 'data'>): Promise<HttpData<D>> {
         return this.instance.put(url, data, config);
     }
 
-    head<D = any>(url: string, config?: HttpConfig): Promise<HttpData<D>> {
+    head<D = any>(url: string, config?: HttpCustomConfig): Promise<HttpData<D>> {
         return this.instance.head(url, config);
     }
 
-    options<D = any>(url: string, config?: HttpConfig): Promise<HttpData<D>> {
+    options<D = any>(url: string, config?: HttpCustomConfig): Promise<HttpData<D>> {
         return this.instance.options(url, config)
     }
 }
