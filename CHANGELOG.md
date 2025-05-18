@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.2.0
+
+### Minor Changes
+
+- 1c8ffff: 优化参数
+
 ## 1.1.1
 
 ### Patch Changes
