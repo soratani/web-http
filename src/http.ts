@@ -243,14 +243,22 @@ export class HttpClient {
             return client.request(config as any)
         }
         if (isInclude([401, 403], status) && refreshKey && !url.endsWith(refreshPath)) {
-            await this.lock.acquire(NOT_AUTH);
-            const authRes = await client.get(refreshPath);
-            if (isInclude([201, 200], authRes.status)) {
-                this.lock.release(NOT_AUTH);
-                return this.instance.request(config);
+            if (!this.lock.isAcquired(NOT_AUTH)) {
+                await this.lock.acquire(NOT_AUTH);
+                const authRes = await client.get(refreshPath);
+                if (isInclude([201, 200], authRes.status)) {
+                    this.lock.release(NOT_AUTH);
+                    return this.instance.request(config);
+                } else {
+                    this.lock.release(NOT_AUTH);
+                }
             } else {
-                this.lock.release(NOT_AUTH);
-            }
+                await this.lock.acquire(NOT_AUTH);
+                if (isNumber(_retry) && _retry > 0) {
+                    config.retry = _retry - 1;
+                    return this.instance.request(config);
+                }
+            } 
         }
         return this.useResponsePipeline(config, res);
     }
