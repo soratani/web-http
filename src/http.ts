@@ -120,7 +120,7 @@ export class HttpClient {
         const refreshKey = get(this.option, 'token.refreshKey');
         const refreshPath = get(this.option, 'token.refreshPath');
         const access = get(this.option, 'token.accessKey', '')
-        if (refreshPath && config.url.endsWith(refreshPath) && refreshKey) {
+        if (refreshPath && config.url?.endsWith(refreshPath) && refreshKey) {
             const refreshToken = await this.storage.get(refreshKey, '');
             if (refreshToken) {
                 headers.Authorization = `Bearer ${refreshToken}`;
@@ -193,17 +193,17 @@ export class HttpClient {
         const client = this;
         const refreshPath = get(this.option, 'token.refreshPath');
         const retry = get(this.option, 'retry', 0);
-        if (this.lock.isAcquired(NOT_AUTH) && refreshPath && !config.url.endsWith(refreshPath)) {
+        if (this.lock.isAcquired(NOT_AUTH) && refreshPath && !config.url?.endsWith(refreshPath)) {
             await this.lock.acquire(NOT_AUTH);
         }
         const temp = await this.mergeAuthToken(omit(config, ['retry']));
         if (isBoolean(config.retry) && !isNumber(temp.retry)) {
             temp.retry = retry;
         }
-        const _config = this.mergeDeviceId(temp);
+        const _config = await this.mergeDeviceId(temp);
         return reduce(this.plugins, (pre, plugin) => {
             return pre.then((value) => plugin.request(client, value));
-        }, _config);
+        }, _config as Promise<HttpConfig> );
     }
 
     private async useResponseSuccess(value: axios.AxiosResponse<any, any>) {
