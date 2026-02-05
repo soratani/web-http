@@ -36,6 +36,7 @@
   },
   "peerDependencies": {
     "axios": "1.7.7",
-    "lodash": "^4.17.21"
+    "lodash": "^4.17.21",
+    "async-await-mutex-lock": "^1.0.12"
   }
 }
