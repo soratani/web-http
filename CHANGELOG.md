@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.2.4
+
+### Patch Changes
+
+- 06ad5dc: 优化
+
 ## 1.2.3
 
 ### Patch Changes
