@@ -238,6 +238,7 @@ export class HttpClient {
 
         this.logger?.error(`[HTTP ERROR]: ${url}`, error);
         const res = get(error, "response.data", defaultStatus);
+        this.logger?.error(`[HTTP RESPONSE ERROR]: ${url}`, res);
         if(isScope([500, 599], status) && isNumber(_retry) && _retry > 0) {
             config.retry = _retry - 1;
             return client.request(config as any)
@@ -260,7 +261,7 @@ export class HttpClient {
                 }
             } 
         }
-        return this.useResponsePipeline(config, res);
+        return Promise.reject(res);
     }
 
     get cache() {
