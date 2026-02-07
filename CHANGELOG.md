@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.2.3
+
+### Patch Changes
+
+- df49234: 日志补充
+
 ## 1.2.2
 
 ### Patch Changes
