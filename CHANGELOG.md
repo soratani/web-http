@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.2.5
+
+### Patch Changes
+
+- 1c14515: 1.2..5
+
 ## 1.2.4
 
 ### Patch Changes
