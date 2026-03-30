@@ -243,23 +243,28 @@ export class HttpClient {
             config.retry = _retry - 1;
             return client.request(config as any)
         }
-        if (isInclude([401, 403], status) && refreshKey && !url.endsWith(refreshPath)) {
-            if (!this.lock.isAcquired(NOT_AUTH)) {
-                await this.lock.acquire(NOT_AUTH);
-                const authRes = await client.get(refreshPath);
-                if (isInclude([201, 200], authRes.status)) {
-                    this.lock.release(NOT_AUTH);
-                    return this.instance.request(config);
-                } else {
-                    this.lock.release(NOT_AUTH);
-                }
+        if (isInclude([401, 403], status) && refreshKey) {
+            if (url.endsWith(refreshPath)) {
+                this.lock.release(NOT_AUTH);
+                return Promise.reject(res);
             } else {
-                await this.lock.acquire(NOT_AUTH);
-                if (isNumber(_retry) && _retry > 0) {
-                    config.retry = _retry - 1;
-                    return this.instance.request(config);
-                }
-            } 
+                if (!this.lock.isAcquired(NOT_AUTH)) {
+                    await this.lock.acquire(NOT_AUTH);
+                    const authRes = await client.get(refreshPath);
+                    if (isInclude([201, 200], authRes.status)) {
+                        this.lock.release(NOT_AUTH);
+                        return this.instance.request(config);
+                    } else {
+                        this.lock.release(NOT_AUTH);
+                    }
+                } else {
+                    await this.lock.acquire(NOT_AUTH);
+                    if (isNumber(_retry) && _retry > 0) {
+                        config.retry = _retry - 1;
+                        return this.instance.request(config);
+                    }
+                } 
+            }
         }
         return Promise.reject(res);
     }
