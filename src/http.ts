@@ -193,6 +193,7 @@ export class HttpClient {
         const client = this;
         const refreshPath = get(this.option, 'token.refreshPath');
         const retry = get(this.option, 'retry', 0);
+        // 非刷新接口时如果无权访问且未在刷新中，则先进入刷新锁，等待刷新完成后再继续请求
         if (this.lock.isAcquired(NOT_AUTH) && refreshPath && !config.url?.endsWith(refreshPath)) {
             await this.lock.acquire(NOT_AUTH);
         }
@@ -246,10 +247,10 @@ export class HttpClient {
         if (isInclude([401, 403], status) && refreshKey) {
             if (url.endsWith(refreshPath)) {
                 this.lock.release(NOT_AUTH);
-                return Promise.reject(res);
+                return Promise.reject(get(res, 'data', { code: status, message: "请求异常" }));
             } else {
                 if (!this.lock.isAcquired(NOT_AUTH)) {
-                    await this.lock.acquire(NOT_AUTH);
+                    this.lock.acquire(NOT_AUTH);
                     const authRes = await client.get(refreshPath);
                     if (isInclude([201, 200], authRes.status)) {
                         this.lock.release(NOT_AUTH);
@@ -266,7 +267,7 @@ export class HttpClient {
                 } 
             }
         }
-        return Promise.reject(res);
+        return Promise.reject(get(res, 'data', { code: status, message: "请求异常" }));
     }
 
     get cache() {
