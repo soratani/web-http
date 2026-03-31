@@ -1,5 +1,11 @@
 # @soratani-code/web-http
 
+## 1.2.6
+
+### Patch Changes
+
+- c08f6ac: 1.2.6
+
 ## 1.2.5
 
 ### Patch Changes
