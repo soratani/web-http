@@ -1,6 +1,6 @@
 import axios, { AxiosRequestConfig, AxiosRequestHeaders } from "axios";
-import { Lock } from "async-await-mutex-lock";
 import { get, isBoolean, isFunction, isNumber, omit, reduce } from "lodash";
+import { Lock } from 'async-await-mutex-lock';
 import { DefaultStorage, HttpLogger, Storage } from "./plugins";
 
 function isScope(scopes: [number, number], value: number) {
@@ -72,8 +72,7 @@ export abstract class HttpPlugin {
     abstract response(client: HttpClient, config: HttpConfig, value: HttpData): Promise<HttpData> | HttpData;
 }
 
-const NOT_AUTH = 'NOT_AUTH';
-
+const NO_AUTH = 'NO_AUTH';
 export class HttpClient {
     private instance: axios.AxiosInstance;
     private plugins: HttpPlugin[] = [];
@@ -97,6 +96,7 @@ export class HttpClient {
         this.mergeDeviceId = this.mergeDeviceId.bind(this);
         this.mergeAuthToken = this.mergeAuthToken.bind(this);
         this.useResponsePipeline = this.useResponsePipeline.bind(this);
+        this.refreshAuthToken = this.refreshAuthToken.bind(this);
         this.mergeTokenFromResponse = this.mergeTokenFromResponse.bind(this);
         this.get = this.get.bind(this);
         this.post = this.post.bind(this);
@@ -175,6 +175,23 @@ export class HttpClient {
         }
     }
 
+    private async refreshAuthToken(): Promise<boolean> {
+        const refreshPath = get(this.option, 'token.refreshPath');
+        if (!refreshPath) return false;
+        if (!this.lock.isAcquired(NO_AUTH)) {
+            await this.lock.acquire(NO_AUTH);
+            const status = await this.get(refreshPath, { noIntercept: true, retry: false })
+            .then((authRes) => isInclude([201, 200], authRes.status))
+            .catch((error) => {
+                this.logger?.error(`[HTTP REFRESH ERROR]: ${refreshPath}`, error);
+                return false;
+            });
+            this.lock.release(NO_AUTH);
+            return status;
+        }
+        return false;
+    }
+
     private useResponsePipeline(config: HttpConfig, val: any) {
         const client = this;
         return reduce(this.plugins, (pre, plugin) => {
@@ -186,16 +203,16 @@ export class HttpClient {
         const client = this;
         return reduce(this.plugins, (pre, plugin) => {
             return pre.then((value) => plugin.response(client, error, value));
-        }, Promise.reject<HttpData>({ code: 500, message: "请求异常" }));
+        }, Promise.reject<HttpData>({ status: 500, code: 500, message: "请求异常" }));
     }
 
     private async useRequestSuccess(config: HttpConfig): Promise<HttpConfig> {
         const client = this;
         const refreshPath = get(this.option, 'token.refreshPath');
         const retry = get(this.option, 'retry', 0);
-        // 非刷新接口时如果无权访问且未在刷新中，则先进入刷新锁，等待刷新完成后再继续请求
-        if (this.lock.isAcquired(NOT_AUTH) && refreshPath && !config.url?.endsWith(refreshPath)) {
-            await this.lock.acquire(NOT_AUTH);
+        // 刷新期间新请求先等待，避免带着过期 token 继续发送
+        if (refreshPath && !config.url?.endsWith(refreshPath) && this.lock.isAcquired(NO_AUTH)) {
+            await this.lock.acquire(NO_AUTH);
         }
         const temp = await this.mergeAuthToken(omit(config, ['retry']));
         if (isBoolean(config.retry) && !isNumber(temp.retry)) {
@@ -219,7 +236,7 @@ export class HttpClient {
         const res = get(value, "data", defaultStatus);
         await this.mergeTokenFromResponse(value);
         this.logger?.info(`[HTTP SUCCESS]: ${url}`, value);
-        if (isBoolean(config.noIntercept) && !config.noIntercept) return Promise.resolve(res);
+        if (config.noIntercept === true) return Promise.resolve(res);
         return this.useResponsePipeline(config, res);
     }
 
@@ -227,8 +244,8 @@ export class HttpClient {
         const refreshKey = get(this.option, 'token.refreshKey')!;
         const refreshPath = get(this.option, 'token.refreshPath')!;
         const url = get(error, "config.url", "") as string;
-        const status = get(error, 'status', 500);
-        const config = get(error, "config");
+        const status = get(error, 'response.status', get(error, 'status', 500));
+        const config = get(error, "config") as HttpConfig | undefined;
         const _retry = get(config, 'retry');
         const client = this;
         const defaultStatus = {
@@ -240,34 +257,20 @@ export class HttpClient {
         this.logger?.error(`[HTTP ERROR]: ${url}`, error);
         const res = get(error, "response", defaultStatus);
         this.logger?.error(`[HTTP RESPONSE ERROR]: ${url}`, res);
-        if(isScope([500, 599], status) && isNumber(_retry) && _retry > 0) {
+        if(isScope([500, 599], status) && config && isNumber(_retry) && _retry > 0) {
             config.retry = _retry - 1;
             return client.request(config as any)
         }
-        if (isInclude([401, 403], status) && refreshKey) {
-            if (url.endsWith(refreshPath)) {
-                this.lock.release(NOT_AUTH);
-                return Promise.reject(get(res, 'data', { code: status, message: "请求异常" }));
-            } else {
-                if (!this.lock.isAcquired(NOT_AUTH)) {
-                    this.lock.acquire(NOT_AUTH);
-                    const authRes = await client.get(refreshPath);
-                    if (isInclude([201, 200], authRes.status)) {
-                        this.lock.release(NOT_AUTH);
-                        return this.instance.request(config);
-                    } else {
-                        this.lock.release(NOT_AUTH);
-                    }
-                } else {
-                    await this.lock.acquire(NOT_AUTH);
-                    if (isNumber(_retry) && _retry > 0) {
-                        config.retry = _retry - 1;
-                        return this.instance.request(config);
-                    }
-                } 
+        if (isInclude([401, 403], status) && refreshKey && refreshPath) {
+            if (url.endsWith(refreshPath) || !config) {
+                return Promise.reject(get(res, 'data', { status, code: status, message: "请求异常" }));
+            }
+            const refreshed = await this.refreshAuthToken();
+            if (refreshed) {
+                return this.instance.request(config);
             }
         }
-        return Promise.reject(get(res, 'data', { code: status, message: "请求异常" }));
+        return Promise.reject(get(res, 'data', { status, code: status, message: "请求异常" }));
     }
 
     get cache() {

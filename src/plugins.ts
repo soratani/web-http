@@ -7,11 +7,8 @@ export abstract class Storage {
 export class DefaultStorage extends Storage {
     private cache: Record<string, any> = {};
     get(key: string, value?: any) {
-        try {
-            return this.cache[key];
-        } catch (error) {
-            return value;
-        }
+        const current = this.cache[key];
+        return current === undefined ? value : current;
     }
     set(key: string, value: any) {
         // @ts-ignore
