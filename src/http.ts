@@ -181,7 +181,7 @@ export class HttpClient {
         if (!this.lock.isAcquired(NO_AUTH)) {
             await this.lock.acquire(NO_AUTH);
             const status = await this.get(refreshPath, { noIntercept: true, retry: false })
-            .then((authRes) => isInclude([201, 200], authRes.status))
+            .then((authRes) => isInclude([201, 399], authRes.status))
             .catch((error) => {
                 this.logger?.error(`[HTTP REFRESH ERROR]: ${refreshPath}`, error);
                 return false;
@@ -226,12 +226,16 @@ export class HttpClient {
 
     private async useResponseSuccess(value: axios.AxiosResponse<any, any>) {
         const url = get(value, "config.url", "");
+        const refreshPath = get(this.option, 'token.refreshPath')!;
         const config = get(value, 'config', {}) as HttpConfig;
         const status = get(value, 'status', 500);
         const defaultStatus = {
             status: status,
             code: 500,
             message: "请稍后重试",
+        }
+        if (url.endsWith(refreshPath) && this.lock.isAcquired(NO_AUTH)) {
+            this.lock.release(NO_AUTH);
         }
         const res = get(value, "data", defaultStatus);
         await this.mergeTokenFromResponse(value);
@@ -262,6 +266,9 @@ export class HttpClient {
             return client.request(config as any)
         }
         if (isInclude([401, 403], status) && refreshKey && refreshPath) {
+            if (url.endsWith(refreshPath) && this.lock.isAcquired(NO_AUTH)) {
+                this.lock.release(NO_AUTH);
+            }
             if (url.endsWith(refreshPath) || !config) {
                 return Promise.reject(get(res, 'data', { status, code: status, message: "请求异常" }));
             }
