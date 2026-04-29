@@ -35,8 +35,9 @@
     "typescript": "^5.0.4"
   },
   "peerDependencies": {
+    "async-await-mutex-lock": "^1.0.12",
     "axios": "1.7.7",
     "lodash": "^4.17.21",
-    "async-await-mutex-lock": "^1.0.12"
+    "qs": "^6.15.1"
   }
 }

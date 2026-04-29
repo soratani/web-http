@@ -1,6 +1,7 @@
 import axios, { AxiosRequestConfig, AxiosRequestHeaders } from "axios";
 import { get, isBoolean, isFunction, isNumber, omit, reduce } from "lodash";
 import { Lock } from 'async-await-mutex-lock';
+import qs from 'qs';
 import { DefaultStorage, HttpLogger, Storage } from "./plugins";
 
 function isScope(scopes: [number, number], value: number) {
@@ -109,7 +110,10 @@ export class HttpClient {
         this.instance = axios.create({
             baseURL: prefix,
             withCredentials: true,
-            headers: baseHeaders
+            headers: baseHeaders,
+            paramsSerializer: (params) => {
+                return qs.stringify(params, { arrayFormat: 'repeat' });
+            }
         });
         this.instance.interceptors.request.use(this.useRequestSuccess as any, this.useRequestError);
         this.instance.interceptors.response.use(this.useResponseSuccess, this.useResponseError);
